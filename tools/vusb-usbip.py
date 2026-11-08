@@ -278,6 +278,7 @@ class USBIPBridge:
         # several USB transfers.
         self.urb_locks = collections.defaultdict(asyncio.Lock)
         self.pending = {}
+        self.active = {}  # endpoint address -> seqnum of the URB whose transfer is running
         self.clients = set()
 
     def interface_records(self):
@@ -403,8 +404,16 @@ class USBIPBridge:
         direction = fields[3]
         ep = fields[4]
         address = ep | (0x80 if direction else 0)
+        seqnum = fields[1]
         async with self.urb_locks[address]:
-            await self._handle_submit(fields, payload, writer)
+            if seqnum not in self.pending:  # unlinked while it waited for the endpoint
+                return
+            self.active[address] = seqnum
+            try:
+                await self._handle_submit(fields, payload, writer)
+            finally:
+                if self.active.get(address) == seqnum:
+                    del self.active[address]
 
     async def _handle_submit(self, fields, payload, writer):
         (_, seqnum, devid, direction, ep, _flags, length, start_frame,
@@ -495,19 +504,33 @@ class USBIPBridge:
         hdr = struct.pack("!IIIIIiiiii8s", RET_SUBMIT, seqnum, devid,
                           direction, ep, status, actual, start_frame,
                           packets, 0, b"\0" * 8)
-        await self.write(writer, hdr + (data if direction == 1 else b""))
+        async with self.write_lock:
+            # An entry in self.pending means "no reply yet". handle_unlink removes it when it
+            # answers an unlink with status 0: vhci-hcd then gives the URB back, and a
+            # RET_SUBMIT for that seqnum makes it drop the whole connection.
+            if self.pending.pop(seqnum, None) is None:
+                return
+            writer.write(hdr + (data if direction == 1 else b""))
+            await writer.drain()
 
     async def handle_unlink(self, rest, writer):
         seqnum, devid, direction, ep, target = struct.unpack("!IIIII", rest)
-        pending = self.pending.get(target)
-        task = pending[0] if pending else None
-        status = 0 if task and not task.done() else -errno.ENOENT
-        # 48 bytes, as every USB/IP reply header: vhci-hcd reads the padding too.
-        await self.write(writer, struct.pack("!IIIIIi24x", RET_UNLINK, seqnum,
-                                            devid, direction, ep, status))
-        if status == 0:
-            _, target_ep, target_direction = pending
-            await self.usb.abort(target_ep, target_direction == 1)
+        # Decide and answer under the write lock, so that a RET_SUBMIT for the target goes
+        # either before this RET_UNLINK (status -ENOENT) or never (status 0).
+        async with self.write_lock:
+            pending = self.pending.pop(target, None)
+            status = 0 if pending else -errno.ENOENT
+            # 48 bytes, as every USB/IP reply header: vhci-hcd reads the padding too.
+            writer.write(struct.pack("!IIIIIi24x", RET_UNLINK, seqnum,
+                                     devid, direction, ep, status))
+            await writer.drain()
+        if pending:
+            task, target_ep, target_direction = pending
+            address = target_ep | (0x80 if target_direction else 0)
+            # Abort the guest transfer only if it is this URB's. A URB still queued behind
+            # another on the endpoint has no transfer yet, and the abort would end the other's.
+            if self.active.get(address) == target:
+                await self.usb.abort(target_ep, target_direction == 1)
             task.cancel()
 
     async def follow_stages(self):
