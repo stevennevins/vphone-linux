@@ -11,7 +11,8 @@
 # The container is privileged and shares the host's /dev, network, process IDs
 # and kernel modules: the VM creation needs loop devices and USB/IP (vhci-hcd),
 # QEMU needs /dev/vhost-vsock and the GPU, and host tools that find a window by
-# its process ID (a computer-use driver) need QEMU's host PID. Your checkout is mounted
+# its process ID (a computer-use driver) need QEMU's host PID. The user is in
+# the group that owns /dev/vhost-vsock on the host (kvm), as on the host. Your checkout is mounted
 # at its own path. The container's home folder is $VPHONE_HOME (default
 # ~/.cache/vphone-arm64-home), which keeps Swift, Rust and the firmware
 # downloads between containers.
@@ -26,7 +27,7 @@ user=$(id -un) uid=$(id -u) gid=$(id -g)
 
 up() {
   docker build -t "$image" --build-arg USER_NAME="$user" --build-arg USER_UID="$uid" \
-    --build-arg USER_GID="$gid" -f "$root/arm64/Dockerfile" "$root"
+    --build-arg USER_GID="$gid" --build-arg VSOCK_GID="$(stat -c %g /dev/vhost-vsock 2>/dev/null)" -f "$root/arm64/Dockerfile" "$root"
   if docker inspect "$name" >/dev/null 2>&1; then
     echo "container $name already exists (arm64/vphone-container.sh down to recreate it)"; return
   fi
@@ -47,10 +48,10 @@ up() {
 
 case ${1:-} in
   up) up ;;
-  shell) docker exec -it -u "$uid:$gid" -w "$root" "$name" bash -l ;;
+  shell) docker exec -it -u "$user" -w "$root" "$name" bash -l ;;
   root) docker exec -it -u 0 -w "$root" "$name" bash -l ;;
-  exec) shift; docker exec -u "$uid:$gid" -w "$root" "$name" bash -lc "$*" ;;
+  exec) shift; docker exec -u "$user" -w "$root" "$name" bash -lc "$*" ;;
   rootexec) shift; docker exec -u 0 -w "$root" "$name" bash -lc "$*" ;;
   down) docker rm -f "$name" ;;
-  *) sed -n '2,17p' "$0"; exit 2 ;;
+  *) sed -n '2,19p' "$0"; exit 2 ;;
 esac

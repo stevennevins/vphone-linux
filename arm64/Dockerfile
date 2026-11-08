@@ -11,6 +11,8 @@ FROM ubuntu:26.04
 ARG USER_NAME=vphone
 ARG USER_UID=1000
 ARG USER_GID=1000
+# The host group that owns /dev/vhost-vsock (kvm). QEMU opens it as the user.
+ARG VSOCK_GID=
 
 ENV DEBIAN_FRONTEND=noninteractive
 COPY setup/lib/packages.sh /tmp/packages.sh
@@ -28,5 +30,7 @@ RUN for t in usbip usbipd; do u=$(find /usr/lib -path '*/linux-tools-*' -name "$
 RUN (getent group "$USER_GID" >/dev/null || groupadd -g "$USER_GID" "$USER_NAME") && \
     (id -u "$USER_UID" >/dev/null 2>&1 && userdel -r "$(id -nu "$USER_UID")" || true) && \
     useradd -m -u "$USER_UID" -g "$USER_GID" -s /bin/bash "$USER_NAME" && \
+    if [ -n "$VSOCK_GID" ]; then (getent group "$VSOCK_GID" >/dev/null || groupadd -g "$VSOCK_GID" vsockhost) && \
+      usermod -aG "$(getent group "$VSOCK_GID" | cut -d: -f1)" "$USER_NAME"; fi && \
     echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vphone && chmod 440 /etc/sudoers.d/vphone
 USER $USER_NAME
