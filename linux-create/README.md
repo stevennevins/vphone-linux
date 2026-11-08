@@ -18,7 +18,7 @@ files listed in `excludes/`, plus:
 ```sh
 ./build.sh                 # clone vphone-cli, install Swift if missing, sync-sources, swift build
 ./vphone-cli fw prepare …  # run it (builds first when needed); sudo ./vphone-cli … for root steps
-# the binary: .build/out/out/Products/Debug-linux-x86_64/vphone-cli
+# the binary: .build/out/out/Products/Debug-linux-$(uname -m)/vphone-cli
 ```
 
 `build.sh` uses the Swift version in `.swift-version` (6.4.1). If it's missing, the script installs it
