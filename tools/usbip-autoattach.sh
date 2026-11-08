@@ -27,8 +27,22 @@ RULES
 udevadm control --reload 2>/dev/null || true
 # A device attached before the rule existed gets it now.
 udevadm trigger --action=add --subsystem-match=usb --attr-match=idVendor=05ac 2>/dev/null || true
+# Where udev is not this system's (a container that shares the host's /dev, such as
+# arm64/vphone-container.sh), the rule above never applies. Give the same mode directly, but only
+# to Apple DFU/recovery devices attached through vhci-hcd: the VM's own virtual devices.
+vhci_dfu_mode() {
+  local d v p
+  for d in /sys/bus/usb/devices/*; do
+    [ -f "$d/idVendor" ] && [ "$(cat "$d/idVendor")" = 05ac ] || continue
+    p=$(cat "$d/idProduct"); [[ $p =~ ^(122[27]|128[0-3])$ ]] || continue
+    [[ $(readlink -f "$d") == *vhci_hcd* ]] || continue
+    v=$(printf '/dev/bus/usb/%03d/%03d' "$(cat "$d/busnum")" "$(cat "$d/devnum")")
+    [ -c "$v" ] && [ "$(stat -c %a "$v")" != 666 ] && chmod 0666 "$v" && echo "$(date +%T) mode 0666: $v (05ac:$p)"
+  done
+}
 echo "attaching devices offered by $HOST (Ctrl-C to stop)"
 while true; do
+  vhci_dfu_mode
   # usbip port often cannot name the remote host ("unknown host"), so any import counts.
   if ! usbip port 2>/dev/null | grep -q "Port in Use"; then
     busid=$(usbip list -r "$HOST" 2>/dev/null | sed -nE 's/^ *([0-9]+-[0-9.]+): .*/\1/p' | head -1)
