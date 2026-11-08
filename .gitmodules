@@ -1,4 +1,4 @@
-# The three forks, pinned by this repository's gitlinks. Clone with
+# The three forks (reims-vgpu: stevennevins's fork with the aarch64 host fix), pinned by this repository's gitlinks. Clone with
 # `git submodule update --init` (not --recursive): reims-vgpu's own vendor/qemu
 # submodule is not used, QEMU comes from ./qemu.
 [submodule "qemu"]
@@ -7,8 +7,8 @@
 	branch = vphone
 [submodule "reims-vgpu"]
 	path = reims-vgpu
-	url = https://github.com/YahiaAngelo/reims-vgpu.git
-	branch = vphone-next3
+	url = https://github.com/stevennevins/reims-vgpu.git
+	branch = arm64-linux-host
 [submodule "metal2vulkan"]
 	path = metal2vulkan
 	url = https://github.com/YahiaAngelo/metal2vulkan.git
