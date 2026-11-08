@@ -54,6 +54,24 @@ the container.
 The NVIDIA container runtime gives the container the driver and its Vulkan
 manifest, `/etc/vulkan/icd.d/nvidia_icd.json`.
 
+### USB devices of the VM in the container
+
+The restore connects to the VM as a USB device over USB/IP (`vhci-hcd`).
+On an x86_64 host, `setup.sh` installs a udev rule that lets your user open
+the VM's DFU and recovery devices. The container has no udev daemon, and the
+host does not have the rule. Two changes replace the rule:
+
+- `tools/usbip-autoattach.sh` sets mode 0666 on Apple DFU and recovery
+  devices attached through `vhci-hcd`. It does this every 0.5 s. Other USB
+  devices stay unchanged.
+- The bundled libirecovery (`linux-create/edits/MobileRecoveryCore.txt`)
+  retries the open of an arriving device for up to 5 s while access is
+  denied. Without the retry, the restore misses the device that iBSS brings
+  back in recovery mode.
+
+Note: `tools/usbip-autoattach.sh` loads the host kernel modules `vhci-hcd`
+and `usbip-core` (in-tree modules) the first time it runs.
+
 ## Procedure
 
 1. Start the container:
