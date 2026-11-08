@@ -327,6 +327,15 @@ usb_helpers() {
 do_restore() {
   usb_helpers
   dry "$T/dfu-stop.sh" "$VM"     # a QEMU left by an earlier, failed attempt
+  # The restore erases the VM, so start each attempt from blank files. An earlier attempt's
+  # nvram.bin can hang the restore at "Waiting for device to enter restore mode", and its APFS
+  # container on Disk.img fails format_media ("newfs_apfs: ... synthesized APFS device: Resource busy").
+  local f size
+  for f in Disk.img nvram.bin SEPStorage; do
+    size=$(stat -c %s "$VM/$f" 2>/dev/null) || size=SIZE   # a dry run has no VM files yet
+    dry truncate -s 0 "$VM/$f"
+    dry truncate -s "$size" "$VM/$f"
+  done
   dry "$T/dfu-up.sh" "$VM" "$VM/.runs-dfu"
   dry "$VC" recovery-probe --ecid "$ECID" --timeout 180 || { "$T/dfu-diagnose.sh" "$VM/.runs-dfu"; return 1; }
   # restore-wait.sh: the tool can wait forever for the device to come back after a finished
