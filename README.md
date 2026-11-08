@@ -1,6 +1,7 @@
 # vphone-linux
 
 Run [vphone-cli](https://github.com/Lakr233/vphone-cli)'s virtual iPhone on a **Linux x86_64 host**, or on Windows 11 under WSL2 ([docs/WSL.md](docs/WSL.md)).
+This fork adds **aarch64 Linux hosts** (tested on an Ampere Altra, Neoverse-N1): see [docs/ARM64.md](docs/ARM64.md).
 
 <p align="center">
   <img src="docs/screenshots/lock-screen.png" width="200" alt="Lock screen">
