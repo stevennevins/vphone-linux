@@ -1,0 +1,4 @@
+# A device that arrives before its node is user-openable (a container that shares the host's /dev
+# has no udev rule; tools/usbip-autoattach.sh sets the mode within 0.5 s) is otherwise dropped for
+# good: retry the open for up to 5 s while it fails with LIBUSB_ERROR_ACCESS.
+libirecovery.c	s/^(\s*)libusb_error = libusb_open\(device, &usb_handle\);$/\1for (int vphone_try = 0; (libusb_error = libusb_open(device, \&usb_handle)) == LIBUSB_ERROR_ACCESS \&\& vphone_try < 50; vphone_try++) usleep(100000);/
