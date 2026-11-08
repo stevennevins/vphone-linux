@@ -95,6 +95,51 @@ python3 -I setup/test/vusb-usbip-timeout.py tools/vusb-usbip.py
 
 `create-vm.sh --device iPhone18,1 --ios 26.6.2` is the iPhone 17 Pro entry in `compatibility.json`. Its firmware is `iPhone17,3_26.6.2_23G90_Restore.ipsw` from Apple's public servers. vphone-cli reports the guest as "iPhone 16 (iPhone17,3), display 1290x2796 @ 460 ppi".
 
+### The SSH ramdisk without a host APFS driver
+
+The `cfw` step of `create-vm.sh` builds an SSH ramdisk. It writes the SSH tools into the APFS volume of the cloudOS restore ramdisk. On x86_64, `tools/ssh-ramdisk-inject.sh` loads the out-of-tree APFS driver (linux-apfs-rw) into the host kernel and mounts the volume there. On a shared host, a fault in that driver stops every user's work.
+
+`arm64/apfs-helper-vm.sh` does the same injection in a small Linux VM instead. Set `VPHONE_APFS_HELPER_VM=1` to use it. The script operates as follows:
+
+- The VM boots the host's own kernel image with an initramfs. QEMU uses KVM for this VM when `/dev/kvm` is writable. The iOS guest still uses TCG.
+- The initramfs holds the APFS driver, `libcrc32c`, the staging tree, `tools/ssh-ramdisk-inject.sh` and the programs that the script uses.
+- The VM runs the inject script on a copy of the APFS image in RAM. It writes the result back to the image file.
+- The VM mounts the result read-only and compares each staged file. It fails if a file differs, or if `dropbear` is missing.
+
+Only the `cfw` step needs APFS on the host. The `cfw install` command reaches the guest volumes over sshfs.
+
+To prepare the helper VM:
+
+1. Build the APFS driver with the compiler that built the host kernel (gcc-13 for Ubuntu 24.04):
+
+   ```bash
+   git clone https://github.com/linux-apfs/linux-apfs-rw.git .build/linux-apfs-rw
+   ```
+
+   ```bash
+   git -C .build/linux-apfs-rw checkout 03187127cd2e62cf78321cdb942eb3a7b17981f9
+   ```
+
+   ```bash
+   git -C .build/linux-apfs-rw apply ../../patches/linux-apfs-rw-ios27.patch
+   ```
+
+   ```bash
+   docker run --rm -u 0 -v /usr/src:/usr/src:ro -v /lib/modules:/lib/modules:ro -v "$PWD/.build/linux-apfs-rw:/src" ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc-13 make libc6-dev libelf1 && make -C /src CC=gcc-13 && chown -R $(id -u):$(id -g) /src"
+   ```
+
+   Note: this builds the driver only. Nothing loads it into the host kernel.
+
+2. Copy the host kernel image. `/boot` is readable by root only:
+
+   ```bash
+   mkdir -p .build/apfs-helper && docker run --rm -u 0 -v /boot:/hostboot:ro ubuntu:24.04 cat /hostboot/vmlinuz-$(uname -r) > .build/apfs-helper/vmlinuz-$(uname -r)
+   ```
+
+3. Set `VPHONE_APFS_HELPER_VM=1` when you make the VM (see the procedure).
+
+On the tested host the helper VM takes about 7 s. In its check, 548 of the 552 staged files match. The other four are files that the inject script drops on purpose (`img4tool`, `img4`, `wget` and `procexp`).
+
 ## Procedure
 
 1. Start the container:
@@ -120,7 +165,7 @@ python3 -I setup/test/vusb-usbip-timeout.py tools/vusb-usbip.py
 3. Make the VM with firmware from Apple's public servers:
 
    ```bash
-   arm64/vphone-container.sh exec './setup/create-vm.sh --device iPhone18,1 --ios 26.6.2 -y'
+   arm64/vphone-container.sh exec 'VPHONE_APFS_HELPER_VM=1 ./setup/create-vm.sh --device iPhone18,1 --ios 26.6.2 -y'
    ```
 
    The last step of `create-vm.sh` starts the VM in a window. Set `DISPLAY` in the command if the container has no default display.

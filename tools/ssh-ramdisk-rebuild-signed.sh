@@ -5,6 +5,8 @@
 #
 # Usage (as your normal user; it asks for sudo once, for the APFS mount):
 #   bash tools/ssh-ramdisk-rebuild-signed.sh <library> <vm>
+# With VPHONE_APFS_HELPER_VM=1 the injection runs in a small Linux VM (arm64/apfs-helper-vm.sh)
+# instead: no sudo, and the host kernel does not load the APFS driver.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -41,8 +43,13 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 cp "$BASE" "$PAYLOAD"
 
-echo "=== inject the staging tree (needs sudo for losetup/mount)"
-sudo "$ROOT/tools/ssh-ramdisk-inject.sh" "$PAYLOAD" "$STAGE" "$MNT"
+if [ "${VPHONE_APFS_HELPER_VM:-0}" = 1 ]; then
+    echo "=== inject the staging tree (in the APFS helper VM)"
+    "$ROOT/arm64/apfs-helper-vm.sh" "$PAYLOAD" "$STAGE"
+else
+    echo "=== inject the staging tree (needs sudo for losetup/mount)"
+    sudo "$ROOT/tools/ssh-ramdisk-inject.sh" "$PAYLOAD" "$STAGE" "$MNT"
+fi
 
 echo "=== repack into the stock rdsk IM4P wrapper"
 "$ROOT/tools/ssh-ramdisk-repack.sh" "$STOCK" "$PAYLOAD" "$OUT"

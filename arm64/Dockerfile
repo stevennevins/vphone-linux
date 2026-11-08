@@ -20,7 +20,7 @@ RUN bash -c 'source /tmp/packages.sh && apt-get update && \
     apt-get install -y --no-install-recommends "${DEBIAN_PKGS[@]}" \
       linux-tools-generic kmod sudo ca-certificates file procps iproute2 less \
       xvfb xdotool x11-utils x11-xserver-utils ffmpeg imagemagick openbox \
-      python3-pip python3-venv python3-numpy e2fsprogs dosfstools bzip2 && \
+      python3-pip python3-venv python3-numpy e2fsprogs dosfstools bzip2 cpio && \
     rm -rf /var/lib/apt/lists/*'
 # Ubuntu ships usbip in linux-tools for one kernel version; link the newest copy.
 RUN for t in usbip usbipd; do u=$(find /usr/lib -path '*/linux-tools-*' -name "$t" | sort -V | tail -1); \
