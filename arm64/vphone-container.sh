@@ -36,7 +36,7 @@ up() {
   if docker info 2>/dev/null | grep -q 'Runtimes:.*nvidia'; then
     gpu=(--runtime nvidia --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all)
   fi
-  docker run -d --name "$name" --hostname "$name" --privileged --network host --ipc host --pid host \
+  docker run -d --name "$name" --hostname "$name" --add-host "$name:127.0.1.1" --privileged --network host --ipc host --pid host \
     "${gpu[@]}" \
     -v /dev:/dev -v /lib/modules:/lib/modules:ro -v /usr/src:/usr/src:ro \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
