@@ -37,7 +37,7 @@ seprom_name=$(python3 -c "import plistlib,sys;print((plistlib.load(open(sys.argv
 machine="vresearch101,ecid=$ecid,sep-rom=$VM/$seprom_name"
 # the serial number Virtualization.framework reported for this machine, if known
 [ -f "$VM/serial" ] && machine+=",serial=$(tr -d ' \n' < "$VM/serial")"
-# TB_SIZE: the TCG code cache in MiB (default 2048, x86-64's limit). An iOS guest keeps ~1.3M
+# TB_SIZE: the TCG code cache in MiB (default 2048, x86-64's limit; an aarch64 host has none). An iOS guest keeps ~1.3M
 # translated blocks live at ~18x expansion: the default 1 GiB filled every ~3.5 minutes (14 full
 # flushes in 49 minutes), and every flush retranslates everything the guest runs next.
 args=(
@@ -91,10 +91,12 @@ if [ "${GFX:-0}" = 1 ]; then
   export REIMS_VGPU_WINDOW=${WINDOW:-0}
   export REIMS_VGPU_WINDOW_TITLE=${REIMS_VGPU_WINDOW_TITLE:-vphone-linux}
   # Every GPU task process must pick the same Vulkan device as QEMU (a task
-  # process left to the loader picked llvmpipe). NVIDIA's manifest is nvidia_icd.x86_64.json on
-  # Fedora and nvidia_icd.json on Arch/Omarchy and Debian.
+  # process left to the loader picked llvmpipe). NVIDIA's manifest is nvidia_icd.<arch>.json on
+  # Fedora, nvidia_icd.json on Arch/Omarchy and Debian, and /etc/vulkan/icd.d/nvidia_icd.json
+  # in a container that NVIDIA's container runtime gives the GPU (arm64/vphone-container.sh).
   if [ -z "${VK_DRIVER_FILES:-}" ]; then
-    for icd in /usr/share/vulkan/icd.d/nvidia_icd.x86_64.json /usr/share/vulkan/icd.d/nvidia_icd.json; do
+    for icd in "/usr/share/vulkan/icd.d/nvidia_icd.$(uname -m).json" /usr/share/vulkan/icd.d/nvidia_icd.json \
+               /etc/vulkan/icd.d/nvidia_icd.json; do
       [ -f "$icd" ] && { export VK_DRIVER_FILES=$icd; break; }
     done
   fi
@@ -104,7 +106,7 @@ if [ "${GFX:-0}" = 1 ]; then
     # fallback. lavapipe can: it renders on the CPU, slower but complete. Present goes through
     # WSLg's Wayland/X server. Set VK_DRIVER_FILES to try another ICD. (A VM's virtio-gpu Venus
     # lacks the same extension: there too, VK_DRIVER_FILES=.../lvp_icd.json.)
-    for icd in /usr/share/vulkan/icd.d/lvp_icd.json /usr/share/vulkan/icd.d/lvp_icd.x86_64.json; do
+    for icd in /usr/share/vulkan/icd.d/lvp_icd.json "/usr/share/vulkan/icd.d/lvp_icd.$(uname -m).json"; do
       [ -f "$icd" ] && { export VK_DRIVER_FILES=$icd; break; }
     done
     # lavapipe's rasterizer threads compete with the vCPUs, and WSL cannot keep QEMU on the
