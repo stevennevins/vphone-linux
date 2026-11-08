@@ -10,7 +10,7 @@
 # Only the QEMU and exporter that a previous dfu-up.sh started for <run-dir> are stopped first.
 #
 # Env: QEMU (default: qemu/build),
-#      GFX=1 WINDOW=1 (open the display window to watch), SMP (8), VUSB_DEBUG=1 (log every URB), VUSB_URB_TIMEOUT (seconds, default 300).
+#      GFX=1 WINDOW=1 (open the display window to watch), SMP (8), VUSB_DEBUG=1 (log every URB), VUSB_URB_TIMEOUT (seconds a bulk OUT URB waits for the guest, default 300; bulk IN waits with no limit).
 set -euo pipefail
 VM=$(realpath "${1:?usage: dfu-up.sh <vm-dir> <run-dir>}")
 mkdir -p "${2:?usage: dfu-up.sh <vm-dir> <run-dir>}"

@@ -134,11 +134,13 @@ class VUSB:
                 await self.out_acks[ep].put((code, data))
 
     async def _next(self, queue, timeout=URB_TIMEOUT, retry=None):
+        """The guest's next answer on queue. timeout=None waits until the guest answers, the
+        guest's driver resets, or the caller is cancelled (a USB/IP unlink)."""
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + timeout
+        deadline = None if timeout is None else loop.time() + timeout
         while True:
-            remaining = deadline - loop.time()
-            if remaining <= 0:
+            remaining = None if deadline is None else deadline - loop.time()
+            if remaining is not None and remaining <= 0:
                 raise asyncio.TimeoutError
             code, data = await asyncio.wait_for(queue.get(), remaining)
             if code == CODE_DRIVER_RESET:
@@ -200,7 +202,11 @@ class VUSB:
                 await self.send(address, MSG_DATA, payload if not direction_in else b"")
 
             await retry()
-            result = await self._next(queue, retry=retry)
+            # A bulk IN URB waits for the device with no time limit, as on a real host
+            # controller: usbmuxd keeps one posted at all times, and a TCG guest can be quiet
+            # for minutes (for example while the restore unmounts its filesystems). usbmuxd
+            # drops the device when an IN URB fails.
+            result = await self._next(queue, None if direction_in else URB_TIMEOUT, retry)
             if not direction_in:
                 return b""
             if max_length is not None and len(result) > max_length:
@@ -466,14 +472,15 @@ class USBIPBridge:
                 actual = length
                 if DEBUG and ep == 1 and payload:
                     self._log_mux(seqnum, "out", payload)
+        except asyncio.TimeoutError:
+            # Before OSError: since Python 3.11 asyncio.TimeoutError is TimeoutError, an
+            # OSError with no errno, which the OSError branch reported as -EIO.
+            log(f"USB/IP URB {seqnum} (ep {ep} {'in' if direction else 'out'}) timed out")
+            status = -errno.ETIMEDOUT
         except OSError as e:
             status = -(e.errno or errno.EIO)
         except Stall:
             status = -errno.EPIPE
-        except asyncio.TimeoutError:
-            if DEBUG:
-                log(f"USB/IP URB {seqnum} timed out after {URB_TIMEOUT:g}s")
-            status = -errno.ETIMEDOUT
         except asyncio.CancelledError:
             status = -errno.ECONNRESET
         except Exception as e:
