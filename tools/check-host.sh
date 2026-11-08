@@ -2,7 +2,19 @@
 # Check this PC against vphone-linux's requirements (docs/SETUP.md). Changes nothing.
 ok=0; warn() { echo "  ! $*"; ok=1; }; pass() { echo "  ok $*"; }
 echo "vphone-linux host check"
-[ "$(uname -m)" = x86_64 ] && pass "x86_64" || warn "not x86_64 ($(uname -m)); only x86_64 hosts are supported"
+case $(uname -m) in
+  x86_64) pass "x86_64" ;;
+  aarch64)
+    # The guest needs Apple's GXF/SPRR and arm64e, which no Linux KVM host provides: QEMU runs it
+    # on TCG, as on x86_64. reims-vgpu needs LSE atomics (Armv8.1) and RCpc loads (Armv8.3 LRCPC).
+    f=$(grep -m1 '^Features' /proc/cpuinfo)
+    case " $f " in *" atomics "*) pass "aarch64 with LSE atomics (TCG, as on x86_64)" ;;
+      *) warn "aarch64 without LSE atomics (Armv8.0); reims-vgpu needs Armv8.1 or later" ;; esac
+    case " $f " in *" lrcpc "*) ;; *) warn "aarch64 without LRCPC; reims-vgpu's ldapr needs it" ;; esac
+    command -v docker >/dev/null && ! grep -q 'Ubuntu 2[6-9]\|Fedora\|Arch' /etc/os-release 2>/dev/null &&
+      echo "  note: on an older distro, build and run in arm64/vphone-container.sh (docs/ARM64.md)" ;;
+  *) warn "$(uname -m) is not supported (x86_64 or aarch64)" ;;
+esac
 n=$(nproc); [ "$n" -ge 12 ] && pass "$n CPU threads" || warn "$n CPU threads; 12 or more recommended (the guest has 8 vCPUs, SMP= lowers it)"
 mem=$(awk '/MemTotal/{print int($2/1048576)}' /proc/meminfo)
 [ "$mem" -ge 15 ] && pass "${mem} GB RAM" || warn "${mem} GB RAM; 16 GB minimum"
