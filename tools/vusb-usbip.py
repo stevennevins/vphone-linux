@@ -375,8 +375,10 @@ class USBIPBridge:
                     task.add_done_callback(lambda done, seq=seqnum:
                                            self._submit_done(done, seq, tasks))
                 elif command == CMD_UNLINK:
-                    rest = await reader.readexactly(20)
-                    await self.handle_unlink(rest, writer)
+                    # Every USB/IP command header is 48 bytes (struct usbip_header): the
+                    # unlink's five fields, then 24 bytes of padding.
+                    rest = await reader.readexactly(44)
+                    await self.handle_unlink(rest[:20], writer)
                 else:
                     raise ValueError(f"unsupported USB/IP command {command}")
         except (asyncio.IncompleteReadError, ConnectionError):
@@ -500,7 +502,8 @@ class USBIPBridge:
         pending = self.pending.get(target)
         task = pending[0] if pending else None
         status = 0 if task and not task.done() else -errno.ENOENT
-        await self.write(writer, struct.pack("!IIIIIi", RET_UNLINK, seqnum,
+        # 48 bytes, as every USB/IP reply header: vhci-hcd reads the padding too.
+        await self.write(writer, struct.pack("!IIIIIi24x", RET_UNLINK, seqnum,
                                             devid, direction, ep, status))
         if status == 0:
             _, target_ep, target_direction = pending
